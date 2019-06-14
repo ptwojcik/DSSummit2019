@@ -66,4 +66,4 @@ Więcej szczegółow dotyczących pakietu `sf` można znaleźć w Pebesma (2018)
 * [nighttime lights calibration](https://damien-c-jacques.rbind.io/post/nighttime-lights-calibration)
 * [Spatialdata.pdf](https://rspatial.org/spatial/Spatialdata.pdf) - rozdział 8
 * Darmowe mapy shp: [https://www.gadm.org](www.gadm.org)
-# [pliki shapefile dla krajów UE z Eurostatu](https://ec.europa.eu/eurostat/web/gisco/geodata/reference-data/administrative-units-statistical-units/nuts#nuts16)
+* [pliki shapefile dla krajów UE z Eurostatu](https://ec.europa.eu/eurostat/web/gisco/geodata/reference-data/administrative-units-statistical-units/nuts#nuts16)
