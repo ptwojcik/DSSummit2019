@@ -1,0 +1,1 @@
+Pliki z danymi i mapami w formacie shapefile
