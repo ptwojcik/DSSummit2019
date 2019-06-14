@@ -180,36 +180,12 @@ dane_ols[1e6]
 ```
 
 
-## Ćwiczenie 1 {.tabset}
-
-### Polecenie
+## Ćwiczenie 1 
 
 Zaimportuj plik rastrowy `SVDNB_npp_20131201-20131231_75N060W_vcmcfg_v10_c201605131341.cf_cvg.tif` z danymi VIIRS z grudnia 2013 do obiektu o nazwie `dane_viirs` i sprawdź jego charakterystyki.
 
-### Przykładowe rozwiązanie
 
-```{r, eval=FALSE}
-dane_viirs <- raster("files/SVDNB_npp_20131201-20131231_75N060W_vcmcfg_v10_c201605131341.cf_cvg_PART.tif")
 
-class(dane_viirs)
-
-object_size(dane_viirs)
-
-ncol(dane_viirs) 
-
-nrow(dane_viirs)
-
-ncell(dane_viirs)
-
-nlayers(dane_viirs)
-
-dim(dane_viirs)
-
-```
-
-```{r, fig.width=10, eval=FALSE}
-plot(dane_viirs)
-```
 
 
 ## Mapy z plików shapefile
@@ -322,28 +298,12 @@ plot(mapa_NUTS2[,"CNTR_CODE"],
 
 
 
-## Ćwiczenie 2 {.tabset}
-
-### Polecenie
+## Ćwiczenie 2
 
 Zaimportuj plik z mapą polskich województw ("files/wojewodztwa.shp") do obiektu `mapa_woj`. Sprawdź i w razie potrzeby dopasuj zgodność projekcji w zbiorze z mapą i pliku rastrowym `dane_viirs`. Wyświetl mapę i sprawdź czy poszczególne regiony są poprawne (`valid`).
 
-### Przykładowe rozwiązanie
 
-```{r, eval = FALSE}
-mapa_woj <- st_read("files/wojewodztwa.shp")
 
-crs(dane_viirs)
-
-crs(mapa_woj)
-
-mapa_woj <- st_transform(mapa_woj, 
-                         crs(dane_viirs)@projargs)
-
-plot(st_geometry(mapa_woj))
-
-table(st_is_valid(mapa_woj))
-```
 
 
 ## Ograniczanie danych rastrowych
@@ -408,29 +368,13 @@ plot(st_geometry(mapa_NUTS2),
 Dane zostały poprawnie ograniczone do obszaru objętego mapą.
 
 
-## Ćwiczenie 3 {.tabset}
-
-### Polecenie
+## Ćwiczenie 3 
 
 Ogranicz zaimportowany w ćwiczeniu 1 obiekt rastrowy `dane_viirs` do obszaru Polski, wstawiając wartości brakujące dla pikseli poza granicami kraju.
 
-### Przykładowe rozwiązanie
 
-```{r, eval=FALSE}
-dane_viirs <- crop(dane_viirs,
-                   extent(mapa_woj))
 
-plot(dane_viirs)
-plot(st_geometry(mapa_woj),
-     add = TRUE)
 
-dane_viirs <- mask(dane_viirs,
-                   mask = mapa_woj)
-
-plot(dane_viirs)
-plot(st_geometry(mapa_woj), 
-     add = TRUE)
-```
 
 ## Agregacja danych o światłach nocnych
 
@@ -541,34 +485,13 @@ plot(mapa_NUTS2[,"swiatla2013"],
 ```
 
 
-## Ćwiczenie 4 {.tabset}
-
-### Polecenie
+## Ćwiczenie 4 
 
 Dokonaj agregacji danych o natężeniu świateł nocnych VIIRS do poziomu województw.
 
-### Przykładowe rozwiązanie
 
-```{r, eval=FALSE}
-mapa_woj <- mapa_woj %>%
-  arrange(jpt_kod_je) 
 
-komorki_obiekty_woj <- cellnumbers(dane_viirs,
-                                   mapa_woj)
 
-komorki_obiekty_woj %>%
-  mutate(light = raster::extract(dane_viirs, 
-                                 komorki_obiekty_woj$cell_)) %>% 
-  group_by(object_) %>% 
-  summarise(swiatla = sum(light, na.rm = TRUE)) -> swiatla_woj
-
-head(swiatla_woj)
-
-mapa_woj$swiatla2013 <- swiatla_woj$swiatla
-
-plot(mapa_woj[,"swiatla2013"], 
-     axes = TRUE)
-```
 
 ## Sprawdzenie korelacji ze wskaźnikami statystycznymi
 
@@ -645,9 +568,7 @@ mapa_NUTS2 %>%
 Na poziomie regionalnym te korelacje są dość niskie.
 
 
-## Ćwiczenie 5 {.tabset}
-
-### Polecenie
+## Ćwiczenie 5
 
 Policz korelacje natężenia świateł nocnych z wartościami danych z Banku Danych Lokalnych GUS.
 
@@ -660,21 +581,6 @@ head(daneGUS)
 Kolumna `wojid` zawiera kod województwa analogiczny jak kod jednostki w zbiorze z mapą `mapa_woj`.
 
 
-### Przykładowe rozwiązanie
-
-
-```{r, eval= FALSE}
-mapa_woj$jpt_kod_je %>% 
-  as.character() %>% 
-  as.numeric() %>% 
-  identical(daneGUS$wojid)
-
-daneGUS$swiatla2013 <- swiatla_woj$swiatla
-
-daneGUS %>% 
-  dplyr::select(ends_with("2013")) %>% 
-  cor() 
-```
 
 
 
