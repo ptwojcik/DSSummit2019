@@ -60,7 +60,7 @@ Teoretycznie obiekty klasy `sf` mogą zawierać więcej niż jedną kolumnę okr
 
 Dla ułatwienia identyfikacji funkcji z tego pakietu ich nazwy zaczynają się od przedrostka `st_`, co ułatwia autouzupełnianie ich nazwy w RStudio.
 
-Więcej szczegółow dotyczących pakietu `sf` można znaleźć w Pebesma (2018), "Simple Features for R: Standardized Support for Spatial Vector Data"", The R Journal Vol. 10/1, s. 439--446 albo Lovelace i in. (2019), "Geocomputation with R".
+Więcej szczegółow dotyczących pakietu `sf` można znaleźć w Pebesma (2018), "[Simple Features for R: Standardized Support for Spatial Vector Data]"(https://journal.r-project.org/archive/2018/RJ-2018-009/RJ-2018-009.pdf), The R Journal Vol. 10/1, s. 439--446 albo Lovelace i in. (2019), "[Geocomputation with R]"(https://geocompr.robinlovelace.net/).
 
 
 ## Źródła i dodatkowe materiały
