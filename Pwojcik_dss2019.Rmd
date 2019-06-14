@@ -1,0 +1,784 @@
+---
+author: Piotr Wójcik
+title: Analiza danych satelitarnych o nocnym oświetleniu Ziemi w R
+output:
+  html_document:
+    theme: spacelab
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true    
+---
+
+
+# Materiały
+
+[Paczka z materiałami](http://datascience.wne.uw.edu.pl/DSS2019.zip)
+
+# Wprowadzenie
+
+## Autor i prowadzący: Piotr Wójcik
+
+* adiunkt na Wydziale Nauk Ekonomicznych UW
+* pomysłodawca i animator [Data Science Lab](http://dslab.wne.uw.edu.pl) na WNE UW
+* ekspert w zakresie wykorzystania oprogramowania R oraz SAS do przetwarzania danych oraz zaawansowanego modelowania
+* od 2008 r. kierownik i wykładowca studiów podyplomowych „Metody statystyczne w biznesie. Warsztaty z oprogramowaniem SAS”: [http://mswb.wne.uw.edu.pl](http://mswb.wne.uw.edu.pl)
+* od 2017 r. kierownik i wykładowca studiów podyplomowych „Data Science w zastosowaniach biznesowych. Warsztaty z wykorzystaniem programu R”: [http://datascience.wne.uw.edu.pl](http://datascience.wne.uw.edu.pl)
+* wieloletnie doświadczenie zawodowe analityka ilościowego w branży finansowej, telekomunikacyjnej i badań marketingowych,
+* współautor książki „Metody ilościowe w R. Aplikacje ekonomiczne i finansowe”
+
+## Intensywność świateł nocnych -- dane
+
+* dane o NTLI opierają się na **zdjęciach satelitarnych** gromadzonych i przetwarzanych przez National Oceanic and Athmosferic Administration
+* **NOAA** udostępnia dwa rodzaje danych:
+    * [Version 4 DMSP-OLS](https://ngdc.noaa.gov/eog/dmsp/downloadV4composites.html) -- uśrednione dane roczne dla okresu 1992--2013
+    * [Version 1 VIIRS](https://www.ngdc.noaa.gov/eog/viirs/download_dnb_composites.html) -- dane miesięczne począwszy od kwietnia 2012 i uśrednione roczne (tylko 2015 i 2016)
+* natężenie świateł mierzone jest dla pikseli o wymiarach 30×30 (DMSP-OLS) lub 15x15 (VIIRS) sekund kątowych
+* odpowiada to **mniej niż $1~km^2$** w okolicach równika (około $0.5~km^2$ w przypadku Polski)
+* dla każdego piksela NTLI podawane jest w jednostkach nazywanych *digital numbers* (**DN**) na skali 0--63 (DMSP-OLS) lub 0--16384 (VIIRS)
+* dane mogą być **agregowane** do poziomu dowolnych jednostek terytorialnych
+
+## Ograniczenia danych o NTLI
+
+* **ograniczenie skali pomiaru** dla DMSP-OLS -- niemożliwe rozróżnienie między natężeniem światła w centrach miast i na peryferiach
+* **natężenia światła o małej intensywności** mogą w procesie filtrowania być **wyzerowane** -- nie ma pewności, że wartość 0 oznacza brak oświetlenia -- **wartości DN 1 i 2 są niedoreprezentowane** w danych
+* pomiary z różnych lat / satelitów / typów nie są bezpośrednio porównywalne
+
+
+## Pakiet sf -- *simple features*
+
+Pakiet `sp` wraz z dodatkowymi narzędziami z pakietów `rgeos` i `rgdal` od wielu lat są standardowymi narzędziami służącymi do analizy danych przestrzennych w R. Niedawno pojawiła się alternatywa w postaci pakietu `sf`, który pozwala przechowywać dane przestrzenne w formie zbliżonej do zbiorów danych nie zawierającymi informacji przestrzennych. Ułatwia to analizy danych przestrzennych i umożliwia zastosowanie nowoczesnych efektywnych narzędzi przetwarzania i wizualizacji danych zgodnych z podejściem `tidyverse` (`dplyr`, `ggplot2`) również w przypadku danych przestrzennych. Pakiet `sf` łączy w jednym miejscu funkcjonalności dostępne wcześniej w trzech różnych pakietach `sp`, `rgdal` i `rgeos`. Dlatego szybko zyskuje popularność wśród osób zajmujących się analizami przestrzennymi w R, stając się nowym standardem do tego typu analiz.
+
+Nazwa pakietu `sf` jest skrótem od *simple features* (nie ma polskiego odpowiednika tego terminu) -- nazwy standardu dla danych wektorowych stworzonego wspólnie przez Otwarte Konsorcjum Geoprzestrzenne (ang. *Open Geospatial Consortium*, OGC) oraz Międzynarodową Organizację Normalizacyjną (ang. *International Organization for Standardization*, ISO). Standard ten (ISO 19125-1:2004) określa sposób reprezentowania w komputerowych bazach danych rzeczywistych obiektów (ang. *features*) -- głównie dwuwymiarowych danych wektorowych, ze szczególnym uwzględnieniem ich geometrii. Obiekty mogą mieć przypisane atrybuty opisowe (typu numerycznego, tekstowego lub logicznego -- np. wysokośc punktu nad poziomem morza, wielkość populacji regionu, nazwa miasta, informacja czy droga reprezentowana przez linie jest autostradą, itp). Oprócz tego każdy obiekt ma atrybut związany z jego geometrią. Geometria obiektów definiowana jest w dwuwymiarowym układzie współrzędnych i wykorzystuje linearną interpolację odległości między współrzędnymi. Jako możliwe typy geometrii obiektów przestrzennych występują: punkt, linia, wielobok, wiele punktów, wiele linii, itp. 
+
+Standard *simple features* jest powszechnie stosowany w otwartych przestrzennych bazach danych (takich jak np. PostGIS), czy komercyjnych narzędziach GIS (np. ESRI ArcGIS). Z kolei standard `GeoJSON` jest uproszczoną wersją standardu *simple features*.
+
+## Klasa `sf` -- specjalna ramka danych
+
+W pakiecie `sf` zdefiniowana jest nowa klasa obiektów przestrzennych, mająca taką samą nazwę jak pakiet, czyli `sf`. Klasa `sf` pozwala przechowywać obiekty przestrzenne wszystkich typów. Obiekty klasy `sf` są de facto ramkami danych (`data.frame`, `tibble`) zawierającymi dodatkowo dane przestrzenne. Pozwala to, jak już wspomniano wcześniej, łatwo i efektywnie przetwarzać tego typu dane z wykorzystaniem funkcjonalności pakietu `dplyr`. Możliwa jest także wizualizacja tak zapisanych danych przestrzennych z wykorzystaniem funkcji pakietu `ggplot2`, choć odpowiednie geometrie `geom_sf` dostępne są póki co (kwiecień 2019) jedynie w wersji deweloperskiej pakietu `ggplot2`.
+
+Wiersze tej specjalnej ramki danych zawierają kolejne obiekty przestrzenne (*features*), natomiast kolumny ich atrybuty -- jak w standardowej ramce danych. Obiekty klasy `sf` zawierają jednak specjalną kolumnę o nazwie `geometry`, definiującą geometrie poszczególnych obiektów. Kolumna ta jest obiektem klasy `sfc`, który z kolei jest listą obiektów klasy `sfg`, reprezentujących geometrie (kształty) poszczególnych obiektów (wierszy danych). Klasa `sfg` zawiera te same podstawowe informacje, co poszczególne pola (sloty) obiektów klasy `Spatial` z pakietu `sp`: CRS, współrzędne geograficzne i typ geometrii (kształt obiektu). Spośród siedemnastu zdefiniowanych rodzajów geometrii do najczęściej wykorzystywanych należą^[Szczegółowy opis wszystkich typów geometrii znajduje się np. na stronie https://r-spatial.github.io/sf/articles/sf1.html.]:
+
+* *POINT* -- punkt,
+* *MULTIPOINT* -- wiele punktów,
+* *LINESTRING* -- linia: sekwencja dwóch lub więcej punktów połączonych liniami prostymi,
+* *MULTILINESTRING*  -- wiele linii,
+* *POLYGON* -- wielobok: zamknięta figura składająca się z odcinków, która może mieć puste obszary w środku,
+* *MULTIPOLYGON* -- wiele wieloboków,
+* *GEOMETRYCOLLECTION* -- dowolna kombinacja powyższych typów.
+
+Teoretycznie obiekty klasy `sf` mogą zawierać więcej niż jedną kolumnę określającą geometrię obiektów, jednak zazwyczaj taka kolumna jest tylko jedna.
+
+Dla ułatwienia identyfikacji funkcji z tego pakietu ich nazwy zaczynają się od przedrostka `st_`, co ułatwia autouzupełnianie ich nazwy w RStudio.
+
+Więcej szczegółow dotyczących pakietu `sf` można znaleźć w Pebesma (2018), "Simple Features for R: Standardized Support for Spatial Vector Data"", The R Journal Vol. 10/1, s. 439--446 albo Lovelace i in. (2019), "Geocomputation with R".
+
+
+# Pomiar nierówności ekonomicznych z kosmosu
+
+## ładujemy pakiety
+
+Poniżej przedstawiono analizę przykładowych danych DMSP-OLS z satelity F18 z uśrednionymi pomiarami natężenia świateł nocnych dla roku 2013 pobranych ze strony internetowej NOAA.
+Ze względu na duży rozmiar pliku źródłowego (ok. 700 MB) na potrzeby warsztatów przygotowana została jego ograniczona wersja.
+
+Standardowym pakietem służącym do analizy danych rastrowych w R jest `raster`. Przechowuje on dane przestrzenne w formie stosu złożonego z warstw (ang. *stack*), w których zapisane są kolejne charakterystyki -- np. różne wskaźniki meteorologiczne i/lub dane dla kolejnych momentów w czasie. 
+
+Poniższa przykładowa analiza zostanie przeprowadzona z wykorzystaniem narzędzi pakietu `raster`.
+
+Zainstalowanie i załadowanie potrzebnych pakietów.
+
+```{r, eval = FALSE}
+install.packages(c("sf", "rgdal", "rgeos", "eurostat",
+                   "dplyr", "readr", "raster",
+                   "pryr", "tabularaster", "lwgeom"))
+```
+
+
+```{r, warning=F, message=F}
+library(sf)
+library(rgdal)
+library(rgeos)
+library(dplyr)
+library(readr)
+library(raster)
+library(pryr)
+library(tabularaster)
+library(lwgeom)
+library(eurostat)
+```
+
+## Analiza z wykorzystaniem funkcji pakietu `raster`
+
+Do importu danych w pakiecie `raster` służy funkcja `raster()`, jeżeli plik ma tylko jedną warstwę (czyli dla każdej komórki / piksela zapisano w nim tylko jedną wartość) albo funkcja `brick()`, jeśli warstw, a tym samym danych w nich zapisanych, jest więcej. Przy czym dla danej komórki w jednej warstwie może być zapisana tylko jedna wartość. W przypadku danych o nocnym natężeniu świateł dane zawierają tylko jedną warstwę.
+
+```{r}
+dane_ols <- raster("files/F182013.v4c_web.stable_lights.avg_vis_PART.tif")
+
+class(dane_ols)
+
+object_size(dane_ols)
+
+```
+Wczytane dane są obiektem klasy `RasterLayer`. Dane wielowarstwowe, wczytane za pomocą funkcji `brick()` byłyby obiektem klasy `RasterBrick`.
+
+Co bardzo ważne, funkcje `raster()` oraz `brick()` nie ładują automatycznie danych do pamięci komputera. Wynika to z faktu, że obiekty rastrowe mogą być bardzo duże, nie zawsze przetwarzane są w całości. Aby oszczędzić pamięć wartości danych ładowane są dopiero w trakcie ich przetwarzania i pamięć jest natychmiast zwalniana po ich przetworzeniu. Dzięki temu przetwarzanie i wyświetlanie nawet dość dużych danych rastrowych na zwykłym komputerze jest możliwe. 
+
+Funkcja `inmemory()` służy do sprawdzenia czy dane zostały załadowane do pamięci.
+
+```{r}
+inMemory(dane_ols)
+```
+
+Nie -- dane nie zostały załadowane. Mimo to mogą być przedstawione w formie graficznej
+
+```{r, fig.width=10}
+plot(dane_ols)
+```
+
+Metoda `plot()` może być stosowana do danych jednowarstwowych lub do pojedynczych warstw złożonych obiektów. Tu widać zarys wszystkich kontynentów.
+
+Wyświetlenie obiektu rastrowego w konsoli pokaże podstawowe dane, w tym jego wymiary, liczbę komórek, zakres współrzędnych geograficznych, informację o zastosowanej projekcji współrzędnych, nazwę pliku oraz zakres zapisanych w nim wartości. 
+
+```{r}
+print(dane_ols)
+```
+
+Obiekty rastrowe mogą zawierać dane numeryczne (typu `numeric` albo `integer`), logiczne albo jakościowe (`factor`), ale nie tekstowe.
+
+Wymiary obiektu typu `raster` są przechowywane w elementach `ncols` i `nrows`. Można je także sprawdzić za pomocą odpowiednich metod `ncol()` i `nrow()`, a łączną liczbę komórek za pomocą metody `ncell()`.
+
+Poniżej sprawdzono raz jeszcze ile pikseli obejmuje cała mapa świata. Klasa `raster` jest utworzona w systemie klas S4.
+
+```{r}
+dane_ols@ncols
+dane_ols@nrows
+
+ncol(dane_ols) 
+nrow(dane_ols)
+ncell(dane_ols)
+dim(dane_ols)
+```
+
+W pełnym pliku łącznie jest ponad 725 milionów komórek, tu nieco ponad 103 mln.
+Ostatni (trzeci) wymiar wyświetany przez funkcję `dim()` oznacza liczbę warstw analizowanego obiektu, którą można sprawdzić także przy użyciu funkcji `nlayers()`.
+
+```{r}
+nlayers(dane_ols)
+```
+
+Wartość dla konkretnej komórki (piksela) można odczytać odwołując się do niej z wykorzystaniem operatora `[`, jak w przypadku macierzy czy ramki danych.
+
+```{r}
+dane_ols[123, 4567]
+```
+
+W przypadku obiektów rastrowych operator `[` oprócz indeksowania po numerze wiersza i kolumny dopuszcza także podawanie identyfikatora komórki:
+
+```{r}
+dane_ols[1e6]
+```
+
+
+## Ćwiczenie 1 {.tabset}
+
+### Polecenie
+
+Zaimportuj plik rastrowy `SVDNB_npp_20131201-20131231_75N060W_vcmcfg_v10_c201605131341.cf_cvg.tif` z danymi VIIRS z grudnia 2013 do obiektu o nazwie `dane_viirs` i sprawdź jego charakterystyki.
+
+### Przykładowe rozwiązanie
+
+```{r, eval=FALSE}
+dane_viirs <- raster("files/SVDNB_npp_20131201-20131231_75N060W_vcmcfg_v10_c201605131341.cf_cvg_PART.tif")
+
+class(dane_viirs)
+
+object_size(dane_viirs)
+
+ncol(dane_viirs) 
+
+nrow(dane_viirs)
+
+ncell(dane_viirs)
+
+nlayers(dane_viirs)
+
+dim(dane_viirs)
+
+```
+
+```{r, fig.width=10, eval=FALSE}
+plot(dane_viirs)
+```
+
+
+## Mapy z plików shapefile
+
+Przed wykonaniem kolejnych analiz dane zostaną ograniczone tylko do obszaru Unii Europejskiej. W tym celu wykorzystany zostanie plik shapefile z mapą polskich województw.
+
+Do wczytywania danych w pakiecie `sf` służy funkcja `st_read()`, która automatycznie rozpoznaje typ pliku (format wczytywanych danych) -- ich listę można wyświetlić uruchamiając polecenie `st_drivers()`. Wykorzystany plik shapefile jest udostępniony prze Eurostat i zawiera definicje regionów NUTS zaktualizowane 2013 roku. Źródło: [administrative-units-statistical-units](https://ec.europa.eu/eurostat/web/gisco/geodata/reference-data/administrative-units-statistical-units)
+
+Konkretnie wykorzystano plik `NUTS_RG_10M_2016_4326_LEVL_2.shp.zip`.
+
+
+```{r}
+mapa_NUTS2 <- st_read("files/NUTS_RG_10M_2013_4326_LEVL_2.shp")
+
+class(mapa_NUTS2)
+
+```
+
+Przy okazji załadowania danych zostały wyświetlone podstawowe informacje o nich. Funkcja `st_read()` rozpoznała typ danych jako ``ESRI Shapefile'` i użyła odpowiedniego silnika (ang. `driver`) do ich importu. Dane dotyczą 320 obiektów (`features`) i zawierają 5 atrybutów (`fields`). Typ geometrii to `MULTIPOLYGON`, dane są dwuwymiarowe (`dimension` = `XY`), podane są skrajne współrzędne ramki ograniczającej (`bounding box`) oraz zastosowane odwzorowanie kartograficzne (projekcja ,`proj4string`) współrzędnych geograficznych. 
+
+
+Aby móc nałożyć mapę na dane rastrowe należy upewnić się, że w obu zbiorach używana jest analogiczna projekcja współrzędnych geograficznych. Sprawdzenie aktualnych wartości tych parametrów zarówno dla obiektów klasy `sf`, jak i `raster` umożliwia funkcja `crs()`.
+
+
+```{r}
+crs(dane_ols)
+
+crs(mapa_NUTS2)
+```
+
+Aby ujednolicić stosowaną projekcję można po prostu skopiować tę stosowaną w pliku rastrowym do zbioru z mapą. 
+
+Zmianę zastosowanego odwzorowania kartograficznego umożliwia funkcja `st_transform()`. Sposób projekcji podaje się za pomocą obiektu `proj4string` albo kodu EPSG.
+
+
+```{r}
+mapa_NUTS2 <- st_transform(mapa_NUTS2, 
+                           crs(dane_ols)@projargs)
+
+plot(st_geometry(mapa_NUTS2))
+```
+
+Obiekty klasy `sf` mogą być traktowane jak zwykłe ramki danych.
+
+```{r}
+head(mapa_NUTS2)
+
+plot(mapa_NUTS2[,"NUTS_ID"])
+
+plot(mapa_NUTS2[,"CNTR_CODE"], 
+     axes = TRUE)
+```
+
+Ograniczmy mapę do głównej części kontynentu. Sprawdźmy jej aktualny zakres (ang. *bounding box*)
+
+```{r}
+st_bbox(mapa_NUTS2)
+```
+
+I ograniczmy go pominając wyspy.
+
+```{r}
+my_bbox = c(xmin = -11,
+            ymin = 30, 
+            xmax = 55.83616, 
+            ymax = 71.15304)
+```
+
+Do ograniczenia przestrzennego obiektu klasy `sf` wykorzystamy funkcję `st_crop()`, której drugi argument jest obiektem definiującym docelowy zakres.
+
+```{r, error=TRUE}
+mapa_NUTS2 <- st_crop(mapa_NUTS2,
+                      my_bbox)
+```
+
+Polecenie nie zadziała jeśli niektóre geometrie nie są poprawne. Pojęcie poprawności odnosi się generalnie do geometrii dwuwymiarowych (`[MULTI]POLYGON`). Intuicyjnie geometria wieloboku (`POLYGON`) jest poprawna (ang. *valid*), jeśli na jego granice składają się kolejno **łączące się**, ale **nienakładające się** i **nieprzecinające się** odcinki. Z kolei obiekt `MULTIPOLYGON` jest poprawny, jeśli składa się z poprawnych wieloboków.
+
+Sprawdzenie poprawności geometrii analizowanych obiektów może być czasochłonne (zwłaszcza dla bardzo złożonych geometrii), ale pozwala oszczędzić problemów przy ich późniejszej wizualzacji czy analizie.
+
+W pakiecie `sf` sprawdzenie poprawności umożliwia funkcja `st_is_valid()`. 
+
+```{r}
+table(st_is_valid(mapa_NUTS2))
+
+ktory_niepopr <- which(!st_is_valid(mapa_NUTS2))
+
+mapa_NUTS2[ktory_niepopr,]
+
+```
+
+Dziewięć regionów ma niepoprawną geometrię. Jej automatyczne poprawienie umożliwia funkcja `st_make_valid()` z pakietu `lwgeom`, będącego rozszerzeniem pakietu `sf`. Jego opis znajduje się tu: https://github.com/r-spatial/lwgeom/.
+
+```{r}
+mapa_NUTS2 <- lwgeom::st_make_valid(mapa_NUTS2)
+```
+
+Spróbujmy ponownie ograniczyć mapę.
+
+```{r}
+mapa_NUTS2 <- st_crop(mapa_NUTS2,
+                      my_bbox)
+```
+
+I zobaczmy wynik.
+
+```{r}
+plot(mapa_NUTS2[,"CNTR_CODE"],
+     axes = TRUE)
+```
+
+
+
+## Ćwiczenie 2 {.tabset}
+
+### Polecenie
+
+Zaimportuj plik z mapą polskich województw ("files/wojewodztwa.shp") do obiektu `mapa_woj`. Sprawdź i w razie potrzeby dopasuj zgodność projekcji w zbiorze z mapą i pliku rastrowym `dane_viirs`. Wyświetl mapę i sprawdź czy poszczególne regiony są poprawne (`valid`).
+
+### Przykładowe rozwiązanie
+
+```{r, eval = FALSE}
+mapa_woj <- st_read("files/wojewodztwa.shp")
+
+crs(dane_viirs)
+
+crs(mapa_woj)
+
+mapa_woj <- st_transform(mapa_woj, 
+                         crs(dane_viirs)@projargs)
+
+plot(st_geometry(mapa_woj))
+
+table(st_is_valid(mapa_woj))
+```
+
+
+## Ograniczanie danych rastrowych
+
+Do przestrzennego ograniczania zbioru danych rastrowych służy funkcja `crop()`, w której jako drugi argument podawany jest docelowy zakres przestrzenny. Musi to być obiekt klasy `Extent`, będący wynikiem zastosowania funkcji `extent()`. Zwraca ona wartości minimalne i maksymalne współrzędnych x i y analizowanych danych rastrowych. W przypadku danych o natężeniu świateł nocnych są to wartości skrajne współrzędnych geograficznych -- odpowiednio długości (x) i szerokości (y) geograficznej.
+
+Sprawdzenie zakresu przestrzennego analizowanych danych rastrowych:
+
+```{r}
+extent(dane_ols)
+```
+
+oraz zbioru z mapą regionów UE:
+
+```{r}
+extent(mapa_NUTS2)
+```
+
+
+Zbiór danych rastrowych zostanie przycięty do prostokąta, w którym mieści się mapa Europy.
+
+```{r}
+dane_ols <- crop(dane_ols,      # dane źródłowe
+                    extent(mapa_NUTS2)) # zakres przycięcia
+```
+
+W razie potrzeby przekształcone dane rastrowe można zapisać do pliku za pomocą funkcji `writeRaster()`, np.:
+
+```{r, eval = FALSE}
+writeRaster(dane_ols,
+            filename = "dane_ols_czesc.tif",
+            overwrite = TRUE)
+```
+
+Wyświetlenie wynikowego obiektu z nałożeniem na dane o natężeniu świateł nocnych mapy granic regionów UE.
+
+```{r, fig.width = 10}
+plot(dane_ols)
+plot(st_geometry(mapa_NUTS2), 
+     add = TRUE)
+```
+
+Najwyższe wartości natężenia oświetlenia występują w największych miastach i obszarach metropolitalnych. Zbiór ten wciąż zawiera jednak obszary leżące poza granicami mapy.
+
+Do identyfikacji pikseli obiektu rastrowego, które leżą wewnątrz poszczególnych wielokątów zdefiniowanych przez zbiór z mapą służy funkcja `mask()`. Tworzy ona nowy obiekt rastrowy, który ma te same wartości co obiekt źródłowy, jeśli jednak jako argument `mask` podany zostanie obiekt przestrzenny, np. mapa (`SpatialPolygon`, `SpatialPolygonDataFrame`, `sf`), to wynikowy obiekt rastrowy będzie ograniczony do pikseli leżących wewnątrz obszaru objętego mapą (wartości w pozostałych są zamieniane na braki danych).   
+
+W poniższym przykładzie obiekt wynikowy zostanie zapisany pod tą samą nazwą, co obiekt źródłowy (kod wykonuje się ok. 1 minutę).
+
+```{r}
+dane_ols <- mask(dane_ols,
+                 mask = mapa_NUTS2)
+```
+
+Ponownie wynikowy obiekt (dane obcięte do obszaru mapy Eurostatu) zostanie wyświetlony z nałożeniem mapy granic regionów NUTS2.
+
+```{r, fig.width = 10}
+plot(dane_ols)
+plot(st_geometry(mapa_NUTS2), 
+     add = TRUE)
+```
+
+Dane zostały poprawnie ograniczone do obszaru objętego mapą.
+
+
+## Ćwiczenie 3 {.tabset}
+
+### Polecenie
+
+Ogranicz zaimportowany w ćwiczeniu 1 obiekt rastrowy `dane_viirs` do obszaru Polski, wstawiając wartości brakujące dla pikseli poza granicami kraju.
+
+### Przykładowe rozwiązanie
+
+```{r, eval=FALSE}
+dane_viirs <- crop(dane_viirs,
+                   extent(mapa_woj))
+
+plot(dane_viirs)
+plot(st_geometry(mapa_woj),
+     add = TRUE)
+
+dane_viirs <- mask(dane_viirs,
+                   mask = mapa_woj)
+
+plot(dane_viirs)
+plot(st_geometry(mapa_woj), 
+     add = TRUE)
+```
+
+## Agregacja danych o światłach nocnych
+
+Kolejnym krokiem analizy będzie agregacja wartości nocnego naświetlenia do poziomu regionów.
+
+Warto sprawdzić w jakiej kolejności regiony występują w zbiorze z mapą, gdyż kolejność wyników agregacji będzie analogiczna.
+
+```{r}
+mapa_NUTS2$NUTS_ID
+```
+
+Dla ułatwienia posortujemy zbiór z mapą po kolumnie z kodem regionu.
+
+```{r}
+mapa_NUTS2 <- mapa_NUTS2 %>%
+  arrange(NUTS_ID) 
+```
+
+W celu dokonania agregacji należy zidentyfikować, na terenie którego z obszarów (regionów) leży każdy piksel. Wykorzystana zostanie funkcja `extract()` z pakietu `raster`. Pozwala ona zidentyfikować wartości pikseli obiektu rastrowego leżące w zakresie selektora, którym mogą być różnego typu obiekty przestrzenne -- punkty, linie albo wieloboki. W poniższym przypadku jako selektor wykorzystana zostanie mapa regionów, która składa się z 311 wieloboków. Ponieważ funkcja `extract()` występuje w wielu pakietach R, aby uniknąć niespodziewanych błędów, warto używać jej wraz z podaniem nazwy pakietu. 
+
+> UWAGA! Poniższy kod wykonuje się kilka minut!! 
+> NIE uruchamiajmy go.
+
+```{r, eval=FALSE}
+  dane_ols_NUTS2 <-
+    raster::extract(dane_ols,
+                    mapa_NUTS2)
+
+```
+
+Dla wydajnej identyfikacji i agregacji danych dla wybranych obszarów można dodatkowo wykorzystać funkcję `cellnumbers()` z pakietu `tabularaster` autorstwa Michaela D. Sumnera
+[tabularaster-usage](https://cran.r-project.org/web/packages/tabularaster/vignettes/tabularaster-usage.html). Kolejną zaletą tego podejśia jest zgodność wynikowych obiektów ze środowiskiem `tidyverse`. Wynikiem jest ramka danych (`tibble`) przyporządkowująca każdej komórce numer obiektu (regionu).
+
+Identyfikujemy liczbę (indeksy) komórek znajdujących się w każdym regionie (wielokąt w obiekcie z mapą).
+
+```{r, error=TRUE}
+komorki_obiekty <- cellnumbers(dane_ols,
+                               mapa_NUTS2)
+```
+
+Niektóre regiony składają się z kilku wieloboków (wysp) i mają geometrię typu `MULTIPOLYGON`, która NIE JEST na razie WSPIERANA przez funkcję `cellnumbers()`. W tym prostym przykładzie przekształcimy wszystkie geometrie na typ `POLYGON`.
+
+```{r, message=FALSE, warning=FALSE}
+mapa_NUTS2 <- st_cast(mapa_NUTS2, "POLYGON")
+```
+
+Spróbujmy ponownie zidentyfikować komórki z obiektu rastroego należące do poszczególnych regionów.
+
+```{r}
+komorki_obiekty <- cellnumbers(dane_ols,
+                               mapa_NUTS2)
+```
+
+Wynikowy obiekt jest ramką danych z dwoma kolumnami: `object_` i `cell_`.
+
+```{r}
+head(komorki_obiekty)
+```
+
+Pozostaje nam dokonać agregacji wartości natężenia światła dla komórek należących do poszczególnych obiektów.
+
+```{r}
+  komorki_obiekty %>% 
+    mutate(light = raster::extract(dane_ols, 
+                                   komorki_obiekty$cell_)) %>% 
+    group_by(object_) %>% 
+    summarise(swiatla = sum(light, na.rm = TRUE)) -> swiatla_NUTS2
+```
+
+Ta metoda jest ok. 500 razy szybsza niż wykorzystanie tylko funkcji `extract()`.
+
+```{r}
+str(swiatla_NUTS2)
+```
+
+Dodajmy nową kolumnę do ramki danych z mapą.
+
+```{r, error=TRUE}
+mapa_NUTS2$swiatla2013 <- swiatla_NUTS2$swiatla
+```
+
+Brakuje wartości świateł dla jednego regionu - którego?
+
+```{r}
+(ktory_brakuje <- which(!1:311 %in% swiatla_NUTS2$object_))
+
+mapa_NUTS2[ktory_brakuje,]
+
+plot(mapa_NUTS2[ktory_brakuje,"CNTR_CODE"])
+```
+
+Ten region ma bardzo dziwny kształt - dla uproszczenia wstawmy mu wartość 0 natężenia świateł nocnych.
+
+```{r}
+swiatla_NUTS2 <- swiatla_NUTS2 %>% 
+  rbind(., data.frame(object_ = 196, swiatla = 0)) %>% 
+  arrange(object_)
+
+```
+
+Dodajmy finalnie nową kolumnę do ramki danych z mapą i wyświetlmy mapę.
+
+```{r, fig.width = 10}
+mapa_NUTS2$swiatla2013 <- swiatla_NUTS2$swiatla
+
+plot(mapa_NUTS2[,"swiatla2013"], 
+     axes = TRUE)
+```
+
+
+## Ćwiczenie 4 {.tabset}
+
+### Polecenie
+
+Dokonaj agregacji danych o natężeniu świateł nocnych VIIRS do poziomu województw.
+
+### Przykładowe rozwiązanie
+
+```{r, eval=FALSE}
+mapa_woj <- mapa_woj %>%
+  arrange(jpt_kod_je) 
+
+komorki_obiekty_woj <- cellnumbers(dane_viirs,
+                                   mapa_woj)
+
+komorki_obiekty_woj %>%
+  mutate(light = raster::extract(dane_viirs, 
+                                 komorki_obiekty_woj$cell_)) %>% 
+  group_by(object_) %>% 
+  summarise(swiatla = sum(light, na.rm = TRUE)) -> swiatla_woj
+
+head(swiatla_woj)
+
+mapa_woj$swiatla2013 <- swiatla_woj$swiatla
+
+plot(mapa_woj[,"swiatla2013"], 
+     axes = TRUE)
+```
+
+## Sprawdzenie korelacji ze wskaźnikami statystycznymi
+
+Ostatecznie dane o natężeniu świateł nocnych zagregowanych do poziomu regionów zostaną zestawione z wartością produktu krajowego brutto i liczby ludności w roku 2013.
+
+Pakiet `eurostat` pozwala pobrać automatycznie dane z europejskiego urzędu statystycznego (Eurostat) -- patrz: [tutorial pakietu eurostat](https://ropengov.github.io/eurostat/articles/eurostat_tutorial.html).
+
+Aby pobrać dane, trzeba znać ich kody używane przez Eurostat.
+
+Można je sprawdzić na [stronie internetowej Eurostatu](https://ec.europa.eu/eurostat/data/database) lub w poszczególnych raportach np. [GDP at regional level](http://ec.europa.eu/eurostat/statistics-explained/index.php/GDP_at_regional_level), [Population statistics at regional level](http://ec.europa.eu/eurostat/statistics-explained/index.php/Population_statistics_at_regional_level).
+
+Można je także sprawdzić przeszukując bazę Eurostatu po słowach kluczowych:
+
+```{r}
+wyniki <- search_eurostat("GDP")
+
+head(wyniki[, 1:3])
+
+```
+
+Pobierzmy dane o wielkości PKB w regionach NUTS2 (`nama_10r_2gdp`).
+
+```{r}
+gdp <- get_eurostat("nama_10r_2gdp", 
+                    time_format = "num")
+
+head(gdp)
+```
+
+Wybierzmy tylko całkowite PKB wg parytetu siły nabywczej (ang. *Purchasing Power Standard*) dla roku 2013.
+
+```{r}
+table(gdp$unit)
+
+gdp <- gdp %>%
+  filter(time == 2013,
+         unit == "MIO_PPS")
+```
+
+Analogicznie pobierzmy dane o wielkości populacji uwzględnianej w liczeniu PKB na mieszkańca.
+
+```{r}
+pop <- get_eurostat("nama_10r_3popgdp", 
+                    time_format = "num")
+
+pop <- pop %>%
+  filter(time == 2013)
+
+head(pop)
+```
+
+Dołączamy dane do zbioru z mapą łącząc obiekty po kodzie regionu
+
+```{r}
+mapa_NUTS2 <- mapa_NUTS2 %>% 
+  left_join(gdp %>% dplyr::select(geo, values), 
+            by = c("NUTS_ID" = "geo")) %>% 
+  dplyr::rename(gdp2013 = values) %>% 
+  left_join(pop %>% dplyr::select(geo, values), 
+            by = c("NUTS_ID" = "geo")) %>% 
+  dplyr::rename(pop2013 = values)
+
+```
+
+I sprawdźmy korelacje między PKB, ludnością i natężeniem świateł nocnych.
+
+```{r}
+mapa_NUTS2 %>% 
+  dplyr::select(ends_with("2013")) %>% 
+  st_drop_geometry() %>% 
+  cor(use = "pairwise.complete.obs") 
+```
+
+Na poziomie regionalnym te korelacje są dość niskie.
+
+
+## Ćwiczenie 5 {.tabset}
+
+### Polecenie
+
+Policz korelacje natężenia świateł nocnych z wartościami danych z Banku Danych Lokalnych GUS.
+
+```{r, eval = FALSE}
+daneGUS <- read_csv("files/daneGUS.csv")
+
+head(daneGUS)
+```
+
+Kolumna `wojid` zawiera kod województwa analogiczny jak kod jednostki w zbiorze z mapą `mapa_woj`.
+
+
+### Przykładowe rozwiązanie
+
+
+```{r, eval= FALSE}
+mapa_woj$jpt_kod_je %>% 
+  as.character() %>% 
+  as.numeric() %>% 
+  identical(daneGUS$wojid)
+
+daneGUS$swiatla2013 <- swiatla_woj$swiatla
+
+daneGUS %>% 
+  dplyr::select(ends_with("2013")) %>% 
+  cor() 
+```
+
+
+
+## Inne funkcje pakietu `raster` (opcjonalnie)
+
+Obiekty rastrowe można rozbudowywać dodając kolejne warstwy -- służy do tego funkcja `stack()` lub `brick()`.
+
+Przed dołączeniem kolejnych warstw warto sprawdzić czy mają one zgodne charakterystyki -- zakres współrzędnych, liczbę wierszy i kolumn, projekcję, zastosowaną rotację oraz rozdzielczość. Służy do tego funkcja `compareRaster()`.
+
+Aby nie ładować dodatkowych dużych danych do pamięci, w poniższym przykładzie stworzono obiekt mający trzy identyczne warstwy zawierające dane o natężeniu świateł nocnych w roku 2013.
+
+```{r}
+compareRaster(dane_ols, # pierwsza warstwa
+              dane_ols, # druga warstwa
+              dane_ols) # trzecia warstwa
+```
+
+Wynik `TRUE` oznacza, że wszystkie charakterystyki wszystkich porównywanych obiektów są zgodne.
+Można je więc połączyć i przypisać nazwy poszczególnym warstwom.
+
+```{r}
+dane_ols_3warstwy <- 
+  stack(dane_ols, # pierwsza warstwa
+        dane_ols, # druga warstwa
+        dane_ols) # trzecia warstwa
+
+names(dane_ols_3warstwy) = c("warstwa1", 
+                                "warstwa2",
+                                "warstwa3")
+```
+
+Wynikowy obiekt ma klasę `RasterStack`.
+
+```{r}
+class(dane_ols_3warstwy)
+
+dane_ols_3warstwy
+```
+
+Do konkretnej warstwy można odwołać się na trzy sposoby:
+
+```{r}
+raster::subset(dane_ols_3warstwy, "warstwa1")
+
+dane_ols_3warstwy[["warstwa2"]]
+
+dane_ols_3warstwy$warstwa3
+```
+
+
+Dodatkowo pakiet `raster` zawiera funkcje pozwalające na obliczanie statystyk opisowych dla obiektów rastrowych. Zdefiniowana dla nich jest metoda `summary()`, wyświetlająca minimum, maksimum, medianę, pierwszy i trzeci kwartyl oraz liczbę braków danych. Obliczenia innych statystyk opisowych, np. średniej, odchylenia standardowego czy innych podsumowań zdefiniowanych za pomocą  własnych funkcji, może być wykonane za pomocą funkcji `cellStats()`.
+
+Jeśli funkcja `summary()` czy `cellStats()` zostanie zastosowana na obiekcie z wieloma warstwami, podsumowanie zostanie wykonane dla każdej warstwy osobno. 
+
+```{r}
+summary(dane_ols) 
+
+cellStats(stack(dane_ols), 
+          mean,
+          na.rm = TRUE)
+
+cellStats(stack(dane_ols), 
+          sd,
+          na.rm = TRUE)
+```
+
+Zastosowanie nietypowych (także własnych) funkcji podsumowujących może nie zadziałać dla bardzo dużych zbiorów rastrowych. W takim przypadku obsługiwane są wyłącznie podstawowe funkcje, takie jak: `sum`, `mean`, `min`, `max`, `sd`, `'skew'` oraz `'rms'` (patrz dokumentacja funkcji `cellStats()`).
+
+```{r, error = TRUE}
+cv <- function(x, na.rm) 100 * sd(x, na.rm = na.rm) / mean(x, na.rm = na.rm)
+cellStats(dane_ols, cv, na.rm = TRUE)
+```
+
+Dla obiektów rastrowych zdefiniowanych jest także szereg metod pozwalających na łatwą wizualizację ich wartości -- `boxplot()`, `density()`, `hist()`:
+
+
+```{r}
+boxplot(dane_ols)
+hist(dane_ols)
+density(dane_ols)
+```
+
+Jeśli funkcja podsumowująca dane albo dokonująca ich wizualizacji nie ma odpowiedniej metody zdefiniowanej dla plików rastrowych, można najpierw wydobyć wartości dla wszystkich komórek, a dopiero w kolejnym kroku zastosować odpowiednią funkcję podsumowującą. Na odwołanie się do wszystkich wartości zapisanych w danej warstwie pozwala funkcja `values()` albo `getValues()`. Jako przykład wygenerowano tabelę częstości wartości natężenia świateł nocnych na obszarze Polski.
+
+```{r}
+getValues(dane_ols) %>% 
+  table()
+```
+
+Wartości $0$ stanowią niemal 17% wszystkich, natomiast w ogóle nie występują wartości 1 i 2, a 3 bardzo rzadko, co związane jest z procesem filtrowania wykorzystanych w powyższym przykładzie tzw. świateł stabilnych.
+
+## Potencjalna alternatywa -- pakiet `stars` (opcjonalnie)
+
+Niedawno (Edzer Pebesma, Roger Bivand 2019, "Spatial Data Science") pojawił się alternatywny pakiet do analizy danych rastrowych `stars` (skrót od angielskiego *scalable, spatiotemporal tidy arrays*) autorstwa Edzera Pebesmy i Rogera Bivanda. Pakiet umożliwia przechowywanie bardziej złożonych danych rastrowych -- definiowanie dynamicznych stosów, obsługuje rastry obrócone, ścięte, prostoliniowe i krzywoliniowe oraz zapewnia ścisłą integrację z pakietem `sf` oraz podejściem do przetwarzania danych stosowanym w pakietach środowiska `tidyverse`.
+
+Zgodnie z deklaracją autorów pakiet `stars` ma na celu większą skalowalność niż pakiet `raster`, umożliwiając przetwarzanie w chmurach obliczeniowych danych rastrowych o wielkościach daleko przekraczających objętość pamięci RAM i możliwości obliczeniowe pojedynczych komputerów.
+
+Pakiet `stars` jest jednak wciąż w fazie rozwoju, jego funkcjonalność jest ograniczona. Postępy w rozwoju pakietu można śledzić w jego repozytorium na portalu github (https://github.com/r-spatial/stars).
+
+
+## Źródła i dodatkowe materiały
+
+* [nighttime lights calibration](https://damien-c-jacques.rbind.io/post/nighttime-lights-calibration)
+* [Spatialdata.pdf](https://rspatial.org/spatial/Spatialdata.pdf) - rozdział 8
+* Darmowe mapy shp: [https://www.gadm.org](www.gadm.org)
+# [pliki shapefile dla krajów UE z Eurostatu](https://ec.europa.eu/eurostat/web/gisco/geodata/reference-data/administrative-units-statistical-units/nuts#nuts16)
+
