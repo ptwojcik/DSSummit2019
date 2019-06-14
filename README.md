@@ -1,6 +1,6 @@
 # Analiza danych satelitarnych o nocnym oświetleniu Ziemi w R"
 
-# Materiały
+## Materiały
 
 [Paczka z materiałami jest też tu](http://datascience.wne.uw.edu.pl/DSS2019.zip)
 
