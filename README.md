@@ -8,7 +8,7 @@
 
 ## Autor i prowadzący: Piotr Wójcik
 
-* adiunkt na Wydziale Nauk Ekonomicznych UW
+* [adiunkt na Wydziale Nauk Ekonomicznych UW](http://coin.wne.uw.edu.pl/pwojcik/)
 * pomysłodawca i animator [Data Science Lab](http://dslab.wne.uw.edu.pl) na WNE UW
 * ekspert w zakresie wykorzystania oprogramowania R oraz SAS do przetwarzania danych oraz zaawansowanego modelowania
 * od 2008 r. kierownik i wykładowca studiów podyplomowych „Metody statystyczne w biznesie. Warsztaty z oprogramowaniem SAS”: [http://mswb.wne.uw.edu.pl](http://mswb.wne.uw.edu.pl)
