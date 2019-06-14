@@ -1,4 +1,4 @@
-# Analiza danych satelitarnych o nocnym oświetleniu Ziemi w R"
+# Analiza danych satelitarnych o nocnym oświetleniu Ziemi w R
 
 ## Materiały
 
