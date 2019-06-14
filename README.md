@@ -4,7 +4,7 @@
 
 [Paczka z kompletnymi materiałami jest też tu](http://datascience.wne.uw.edu.pl/DSS2019.zip) - na GitHibie nie zmieścił się jeden duży plik rastrowy.
 
-[A tu jest output z pliku `Pwojcik_dss2019.Rmd` w formacie html]
+[A tu jest output z pliku `Pwojcik_dss2019.Rmd` w formacie html](http://datascience.wne.uw.edu.pl/dss2019.html)
 
 ## Autor i prowadzący: Piotr Wójcik
 
